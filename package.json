@@ -1,0 +1,9 @@
+{
+  "name": "vumedi-interview-scorecard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Croatian-to-English interview scorecard generator for Vumedi hiring interviews. Static frontend + a Vercel serverless function that holds the OpenAI API key server-side.",
+  "engines": {
+    "node": ">=18"
+  }
+}
