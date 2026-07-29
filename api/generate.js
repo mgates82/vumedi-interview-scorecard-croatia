@@ -1,9 +1,9 @@
 // Vercel Serverless Function
 //
-// Purpose: keep the OpenAI API key on the server (a Vercel environment
-// variable) instead of in the browser. The frontend (index.html) posts
-// { model, temperature, messages } here; this function attaches the key
-// and forwards the request to OpenAI's Chat Completions API.
+// Purpose: keep the Anthropic (Claude) API key on the server (a Vercel
+// environment variable) instead of in the browser. The frontend
+// (index.html) posts { model, system, messages } here; this function
+// attaches the key and forwards the request to Anthropic's Messages API.
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,12 +11,12 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     res.status(500).json({
       error: {
         message:
-          'Server is missing OPENAI_API_KEY. In your Vercel project, go to Settings \u2192 Environment Variables, add OPENAI_API_KEY, then redeploy.',
+          'Server is missing ANTHROPIC_API_KEY. In your Vercel project, go to Settings \u2192 Environment Variables, add ANTHROPIC_API_KEY, then redeploy.',
       },
     });
     return;
@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
       body = {};
     }
   }
-  const { model, temperature, messages } = body || {};
+  const { model, system, messages } = body || {};
 
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: { message: 'Missing "messages" in request body.' } });
@@ -38,32 +38,41 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o-mini',
-        temperature: typeof temperature === 'number' ? temperature : 0.3,
+        model: model || 'claude-sonnet-5',
+        max_tokens: 4096,
+        temperature: 0.3,
+        system: system || undefined,
         messages,
       }),
     });
 
-    const data = await openaiRes.json().catch(() => ({}));
+    const data = await anthropicRes.json().catch(() => ({}));
 
-    if (!openaiRes.ok) {
-      res.status(openaiRes.status).json({
+    if (!anthropicRes.ok) {
+      res.status(anthropicRes.status).json({
         error: {
-          message: data?.error?.message || `OpenAI request failed (HTTP ${openaiRes.status}).`,
+          message: data?.error?.message || `Anthropic request failed (HTTP ${anthropicRes.status}).`,
         },
       });
       return;
     }
 
-    res.status(200).json(data);
+    // Normalize to the same shape the frontend expects:
+    // { choices: [ { message: { content: "..." } } ] }
+    const text = Array.isArray(data?.content)
+      ? data.content.map((block) => block?.text || '').join('')
+      : '';
+
+    res.status(200).json({ choices: [{ message: { content: text || '(No content returned.)' } }] });
   } catch (err) {
-    res.status(500).json({ error: { message: 'Server error calling OpenAI: ' + err.message } });
+    res.status(500).json({ error: { message: 'Server error calling Anthropic: ' + err.message } });
   }
 };
